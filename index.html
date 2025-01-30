@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrolling Book Reader</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: white;
+            color: black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            width: 60%;
+            max-width: 600px;
+            background: white;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            text-align: center;
+        }
+        #reader {
+            width: 100%;
+            height: 300px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            overflow-y: auto;
+            text-align: left;
+            font-size: 18px;
+            line-height: 1.6;
+        }
+        .controls {
+            margin-top: 10px;
+        }
+        .controls button, .controls input {
+            padding: 10px;
+            margin: 5px;
+            font-size: 16px;
+        }
+    </style>
+
+    <!-- Include PDF.js and Mammoth.js Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js"></script>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Scrolling Book Reader</h2>
+        <input type="file" id="fileInput" accept=".pdf,.docx,.txt">
+        <div id="reader"></div>
+        <div class="controls">
+            <button id="pauseResume">Pause</button>
+            <label>Speed: </label>
+            <input type="range" id="speedControl" min="10" max="200" value="50">
+        </div>
+    </div>
+
+    <script>
+        let text = "";
+        let index = 0;
+        let speed = 50;
+        let paused = false;
+        let readerDiv = document.getElementById("reader");
+        let speedControl = document.getElementById("speedControl");
+        let pauseResumeBtn = document.getElementById("pauseResume");
+
+        function typeText() {
+            if (paused || index >= text.length) return;
+            readerDiv.innerHTML += text[index];
+            index++;
+            readerDiv.scrollTop = readerDiv.scrollHeight; // Auto-scroll
+            setTimeout(typeText, speed);
+        }
+
+        // Function to handle PDF files
+        function handlePdfFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const loadingTask = pdfjsLib.getDocument(new Uint8Array(e.target.result));
+                loadingTask.promise.then(pdf => {
+                    let pageNumber = 1;
+                    let pdfText = '';
+                    const pagePromises = [];
+                    while (pageNumber <= pdf.numPages) {
+                        pagePromises.push(pdf.getPage(pageNumber).then(page => {
+                            return page.getTextContent().then(textContent => {
+                                textContent.items.forEach(item => {
+                                    pdfText += item.str + ' ';
+                                });
+                            });
+                        }));
+                        pageNumber++;
+                    }
+                    Promise.all(pagePromises).then(() => {
+                        text = pdfText;
+                        index = 0;
+                        readerDiv.innerHTML = '';
+                        typeText();
+                    });
+                });
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Function to handle DOCX files
+        function handleDocxFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                mammoth.extractRawText({arrayBuffer: e.target.result})
+                    .then(function(result) {
+                        text = result.value;
+                        index = 0;
+                        readerDiv.innerHTML = '';
+                        typeText();
+                    })
+                    .catch(function(err) {
+                        console.error('Error parsing DOCX:', err);
+                    });
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        document.getElementById("fileInput").addEventListener("change", function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const fileType = file.name.split('.').pop().toLowerCase();
+                if (fileType === 'pdf') {
+                    handlePdfFile(file);
+                } else if (fileType === 'docx') {
+                    handleDocxFile(file);
+                } else if (fileType === 'txt') {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        text = e.target.result;
+                        index = 0;
+                        readerDiv.innerHTML = '';
+                        typeText();
+                    };
+                    reader.readAsText(file);
+                } else {
+                    alert("Please upload a PDF, DOCX, or TXT file.");
+                }
+            }
+        });
+
+        pauseResumeBtn.addEventListener("click", function() {
+            paused = !paused;
+            pauseResumeBtn.innerText = paused ? "Resume" : "Pause";
+            if (!paused) typeText();
+        });
+
+        speedControl.addEventListener("input", function() {
+            speed = Number(this.value);
+        });
+    </script>
+
+</body>
+</html>
